@@ -1,0 +1,988 @@
+
+    def test_pagination_data_handling(api_session):
+        """
+        Tests how the API handles extreme, negative, or malformed data bounds.
+        """
+        # Test 1: Massive Limit (Testing for memory bloat / DDoS vector)
+        resp_massive = api_session.get(f"{BASE_URL}/api/videos?limit=999999999")
+        if resp_massive.status_code == 500:
+            pytest.fail("BUG FOUND: API throws unhandled 500 error on massive limit (Performance/Memory leak).")
+    
+        # Test 2: Negative Limit (Testing for bad database query handling)
+        resp_negative = api_session.get(f"{BASE_URL}/api/videos?limit=-1")
+        if resp_negative.status_code == 200:
+>           pytest.fail("BUG FOUND: API accepts negative limits, potentially breaking pagination logic.")
+E           Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+tests\test_pipeline.py:147: Failed
+__________________________________________________________ test_schema_validation_failure ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021AC3241910>
+
+    def test_schema_validation_failure(api_session):
+        """
+        Tests if the API accepts completely empty schemas or crashes when required fields are missing.
+        """
+        # Send an empty JSON object
+        resp = api_session.post(f"{BASE_URL}/api/videos", json={})
+    
+        if resp.status_code in [200, 201]:
+            # Clean up if it actually created it
+            video_id = resp.json().get("id")
+            if video_id:
+                api_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+>           pytest.fail("BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.")
+E           Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+tests\test_pipeline.py:277: Failed
+____________________________________________________________ test_out_of_order_execution ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021AC3241910>
+
+    def test_out_of_order_execution(api_session):
+        """
+        Attempts to fetch captions for a video that was created but NEVER triggered for processing.
+        """
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Out of Order Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # We skip the trigger step and immediately ask for captions
+            caption_resp = api_session.get(f"{BASE_URL}/api/captions?videoId={video_id}")
+    
+            # A good API should return 404 (Not Found) or 400 (Bad Request).
+            if caption_resp.status_code == 200:
+>               pytest.fail("BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.")
+E               Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+tests\test_pipeline.py:296: Failed
+____________________________________________________________ test_content_type_handling _____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021AC3241910>
+
+    def test_content_type_handling(api_session):
+        """
+        Tests how the API handles requests with incorrect Content-Types or malformed body data.
+        """
+        # Sending plain text instead of JSON
+        headers = {"Content-Type": "text/plain"}
+        payload = "This is definitely not valid JSON data."
+    
+        # We must use api_session.request to override the default JSON formatting
+        resp = api_session.post(f"{BASE_URL}/api/videos", data=payload, headers=headers)
+    
+        if resp.status_code == 500:
+            pytest.fail("BONUS BUG CAUGHT: API crashes (500) when receiving non-JSON content types.")
+        elif resp.status_code in [200, 201]:
+>           pytest.fail("BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.")
+E           Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+tests\test_pipeline.py:332: Failed
+========================================================== SIGNSETU VULNERABILITY SUMMARY ===========================================================
+TARGET   : test_ghost_data_after_deletion
+BREACH   : BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+TARGET   : test_idor_authorization_leak
+BREACH   : CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+TARGET   : test_pagination_data_handling
+BREACH   : BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+TARGET   : test_schema_validation_failure
+BREACH   : BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+TARGET   : test_out_of_order_execution
+BREACH   : BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+TARGET   : test_content_type_handling
+BREACH   : BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+============================================================== short test summary info ==============================================================.
+FAILED tests/test_pipeline.py::test_idor_authorization_leak - Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+FAILED tests/test_pipeline.py::test_pagination_data_handling - Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+FAILED tests/test_pipeline.py::test_schema_validation_failure - Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+FAILED tests/test_pipeline.py::test_out_of_order_execution - Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+FAILED tests/test_pipeline.py::test_content_type_handling - Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+=========================================================== 6 failed, 9 passed in 52.18s ============================================================
+(venv) PS C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa> pytest -v -s tests/test_pipeline.py
+================================================================ test session starts ================================================================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa
+collected 16 items                                                                                                                                   
+
+tests/test_pipeline.py::test_ghost_data_after_deletion FAILED
+tests/test_pipeline.py::test_idor_authorization_leak FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling PASSED
+tests/test_pipeline.py::test_pagination_data_handling FAILED
+tests/test_pipeline.py::test_malicious_payload_injection PASSED
+tests/test_pipeline.py::test_unsupported_method_crashing PASSED
+tests/test_pipeline.py::test_missing_mandatory_header_crash PASSED
+tests/test_pipeline.py::test_global_data_leak_on_index PASSED
+tests/test_pipeline.py::test_zombie_job_trigger PASSED
+tests/test_pipeline.py::test_schema_validation_failure FAILED
+tests/test_pipeline.py::test_out_of_order_execution FAILED
+tests/test_pipeline.py::test_mass_deletion_vulnerability PASSED
+tests/test_pipeline.py::test_content_type_handling FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling_500 PASSED
+tests/test_pipeline.py::test_end_to_end_caption_lifecycle ERROR
+tests/test_pipeline.py::test_mandatory_header_enforcement_on_data_endpoints PASSED
+
+====================================================================== ERRORS =======================================================================
+________________________________________________ ERROR at setup of test_end_to_end_caption_lifecycle ________________________________________________
+file C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\tests\test_pipeline.py, line 385
+  def test_end_to_end_caption_lifecycle(api_session, video_factory):
+E       fixture 'video_factory' not found
+>       available fixtures: api_session, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\tests\test_pipeline.py:385
+===================================================================== FAILURES ======================================================================
+__________________________________________________________ test_ghost_data_after_deletion ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_ghost_data_after_deletion(api_session):
+        """
+        Verifies if deleting a video properly cleans up associated data,
+        accounting for eventual consistency in distributed databases.
+        """
+        # Setup
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Cleanup Test"})
+        video_id = create_resp.json().get("id")
+    
+        api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+        # Use the hardened poller
+        result = poll_until_complete(api_session, video_id)
+        if result == "timeout":
+>           pytest.fail("BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.")
+E           Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+tests\test_pipeline.py:52: Failed
+___________________________________________________________ test_idor_authorization_leak ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_idor_authorization_leak(api_session):
+        """
+        Tests if a user can access another user's data by manipulating the X-Candidate-ID.
+        """
+        import requests
+    
+        # 1. Create a video with your main session (Candidate A)
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "IDOR Test Video"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Create a brand new session (Candidate B)
+            rogue_session = requests.Session()
+            rogue_session.headers.update({"X-Candidate-ID": "COMPLETELY_DIFFERENT_ID_999"})
+    
+            # Authenticate Rogue Session
+            auth_resp = rogue_session.post(f"{BASE_URL}/api/auth")
+            rogue_token = auth_resp.json().get("token")
+            rogue_session.headers.update({"Authorization": f"Bearer {rogue_token}"})
+    
+            # 3. Attempt to fetch Candidate A's video using Candidate B's session
+            rogue_get_resp = rogue_session.get(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_get_resp.status_code == 200:
+                pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can access records belonging to another candidate's ID.")
+    
+            # 4. Attempt to DELETE Candidate A's video using Candidate B's session
+            rogue_delete_resp = rogue_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_delete_resp.status_code in [200, 204]:
+>               pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.")
+E               Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+tests\test_pipeline.py:101: Failed
+___________________________________________________________ test_pagination_data_handling ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_pagination_data_handling(api_session):
+        """
+        Tests how the API handles extreme, negative, or malformed data bounds.
+        """
+        # Test 1: Massive Limit (Testing for memory bloat / DDoS vector)
+        resp_massive = api_session.get(f"{BASE_URL}/api/videos?limit=999999999")
+        if resp_massive.status_code == 500:
+            pytest.fail("BUG FOUND: API throws unhandled 500 error on massive limit (Performance/Memory leak).")
+    
+        # Test 2: Negative Limit (Testing for bad database query handling)
+        resp_negative = api_session.get(f"{BASE_URL}/api/videos?limit=-1")
+        if resp_negative.status_code == 200:
+>           pytest.fail("BUG FOUND: API accepts negative limits, potentially breaking pagination logic.")
+E           Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+tests\test_pipeline.py:147: Failed
+__________________________________________________________ test_schema_validation_failure ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_schema_validation_failure(api_session):
+        """
+        Tests if the API accepts completely empty schemas or crashes when required fields are missing.
+        """
+        # Send an empty JSON object
+        resp = api_session.post(f"{BASE_URL}/api/videos", json={})
+    
+        if resp.status_code in [200, 201]:
+            # Clean up if it actually created it
+            video_id = resp.json().get("id")
+            if video_id:
+                api_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+>           pytest.fail("BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.")
+E           Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+tests\test_pipeline.py:277: Failed
+____________________________________________________________ test_out_of_order_execution ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_out_of_order_execution(api_session):
+        """
+        Attempts to fetch captions for a video that was created but NEVER triggered for processing.
+        """
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Out of Order Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # We skip the trigger step and immediately ask for captions
+            caption_resp = api_session.get(f"{BASE_URL}/api/captions?videoId={video_id}")
+    
+            # A good API should return 404 (Not Found) or 400 (Bad Request).
+            if caption_resp.status_code == 200:
+>               pytest.fail("BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.")
+E               Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+tests\test_pipeline.py:296: Failed
+____________________________________________________________ test_content_type_handling _____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000016EB3D5FE10>
+
+    def test_content_type_handling(api_session):
+        """
+        Tests how the API handles requests with incorrect Content-Types or malformed body data.
+        """
+        # Sending plain text instead of JSON
+        headers = {"Content-Type": "text/plain"}
+        payload = "This is definitely not valid JSON data."
+    
+        # We must use api_session.request to override the default JSON formatting
+        resp = api_session.post(f"{BASE_URL}/api/videos", data=payload, headers=headers)
+    
+        if resp.status_code == 500:
+            pytest.fail("BONUS BUG CAUGHT: API crashes (500) when receiving non-JSON content types.")
+        elif resp.status_code in [200, 201]:
+>           pytest.fail("BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.")
+E           Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+tests\test_pipeline.py:332: Failed
+========================================================== SIGNSETU VULNERABILITY SUMMARY ===========================================================
+TARGET   : test_ghost_data_after_deletion
+BREACH   : BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+TARGET   : test_idor_authorization_leak
+BREACH   : CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+TARGET   : test_pagination_data_handling
+BREACH   : BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+TARGET   : test_schema_validation_failure
+BREACH   : BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+TARGET   : test_out_of_order_execution
+BREACH   : BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+TARGET   : test_content_type_handling
+BREACH   : BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+============================================================== short test summary info ==============================================================
+FAILED tests/test_pipeline.py::test_ghost_data_after_deletion - Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck
+FAILED tests/test_pipeline.py::test_idor_authorization_leak - Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+FAILED tests/test_pipeline.py::test_pagination_data_handling - Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+FAILED tests/test_pipeline.py::test_schema_validation_failure - Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+FAILED tests/test_pipeline.py::test_out_of_order_execution - Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+FAILED tests/test_pipeline.py::test_content_type_handling - Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+ERROR tests/test_pipeline.py::test_end_to_end_caption_lifecycle
+======================================================= 6 failed, 9 passed, 1 error in 56.98s =======================================================
+(venv) PS C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa> pytest -v -s tests/test_pipeline.py
+================================================================ test session starts ================================================================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa
+collected 16 items                                                                                                                                   
+
+tests/test_pipeline.py::test_end_to_end_caption_lifecycle FAILED
+tests/test_pipeline.py::test_ghost_data_after_deletion FAILED
+tests/test_pipeline.py::test_idor_authorization_leak FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling PASSED
+tests/test_pipeline.py::test_pagination_data_handling FAILED
+tests/test_pipeline.py::test_malicious_payload_injection PASSED
+tests/test_pipeline.py::test_unsupported_method_crashing PASSED
+tests/test_pipeline.py::test_missing_mandatory_header_crash PASSED
+tests/test_pipeline.py::test_global_data_leak_on_index PASSED
+tests/test_pipeline.py::test_zombie_job_trigger PASSED
+tests/test_pipeline.py::test_schema_validation_failure FAILED
+tests/test_pipeline.py::test_out_of_order_execution FAILED
+tests/test_pipeline.py::test_mass_deletion_vulnerability PASSED
+tests/test_pipeline.py::test_content_type_handling FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling_500 PASSED
+tests/test_pipeline.py::test_mandatory_header_enforcement_on_data_endpoints PASSED
+
+===================================================================== FAILURES ======================================================================
+_________________________________________________________ test_end_to_end_caption_lifecycle _________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_end_to_end_caption_lifecycle(api_session):
+        # 1. Create
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "E2E Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Trigger
+            api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+            # 3. Poll (Using helper with timeout)
+            result = poll_until_complete(api_session, video_id)
+>           assert result == "completed", f"Workflow failed or timed out. Result: {result}"
+E           AssertionError: Workflow failed or timed out. Result: timeout
+E           assert 'timeout' == 'completed'
+E             
+E             - completed
+E             + timeout
+
+tests\test_pipeline.py:49: AssertionError
+__________________________________________________________ test_ghost_data_after_deletion ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_ghost_data_after_deletion(api_session):
+        """
+        Verifies if deleting a video properly cleans up associated data,
+        accounting for eventual consistency in distributed databases.
+        """
+        # Setup
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Cleanup Test"})
+        video_id = create_resp.json().get("id")
+    
+        api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+        # Use the hardened poller
+        result = poll_until_complete(api_session, video_id)
+        if result == "timeout":
+>           pytest.fail("BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.")
+E           Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+tests\test_pipeline.py:72: Failed
+___________________________________________________________ test_idor_authorization_leak ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_idor_authorization_leak(api_session):
+        """
+        Tests if a user can access another user's data by manipulating the X-Candidate-ID.
+        """
+        import requests
+    
+        # 1. Create a video with your main session (Candidate A)
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "IDOR Test Video"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Create a brand new session (Candidate B)
+            rogue_session = requests.Session()
+            rogue_session.headers.update({"X-Candidate-ID": "COMPLETELY_DIFFERENT_ID_999"})
+    
+            # Authenticate Rogue Session
+            auth_resp = rogue_session.post(f"{BASE_URL}/api/auth")
+            rogue_token = auth_resp.json().get("token")
+            rogue_session.headers.update({"Authorization": f"Bearer {rogue_token}"})
+    
+            # 3. Attempt to fetch Candidate A's video using Candidate B's session
+            rogue_get_resp = rogue_session.get(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_get_resp.status_code == 200:
+                pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can access records belonging to another candidate's ID.")
+    
+            # 4. Attempt to DELETE Candidate A's video using Candidate B's session
+            rogue_delete_resp = rogue_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_delete_resp.status_code in [200, 204]:
+>               pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.")
+E               Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+tests\test_pipeline.py:121: Failed
+___________________________________________________________ test_pagination_data_handling ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_pagination_data_handling(api_session):
+        """
+        Tests how the API handles extreme, negative, or malformed data bounds.
+        """
+        # Test 1: Massive Limit (Testing for memory bloat / DDoS vector)
+        resp_massive = api_session.get(f"{BASE_URL}/api/videos?limit=999999999")
+        if resp_massive.status_code == 500:
+            pytest.fail("BUG FOUND: API throws unhandled 500 error on massive limit (Performance/Memory leak).")
+    
+        # Test 2: Negative Limit (Testing for bad database query handling)
+        resp_negative = api_session.get(f"{BASE_URL}/api/videos?limit=-1")
+        if resp_negative.status_code == 200:
+>           pytest.fail("BUG FOUND: API accepts negative limits, potentially breaking pagination logic.")
+E           Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+tests\test_pipeline.py:167: Failed
+__________________________________________________________ test_schema_validation_failure ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_schema_validation_failure(api_session):
+        """
+        Tests if the API accepts completely empty schemas or crashes when required fields are missing.
+        """
+        # Send an empty JSON object
+        resp = api_session.post(f"{BASE_URL}/api/videos", json={})
+    
+        if resp.status_code in [200, 201]:
+            # Clean up if it actually created it
+            video_id = resp.json().get("id")
+            if video_id:
+                api_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+>           pytest.fail("BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.")
+E           Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+tests\test_pipeline.py:297: Failed
+____________________________________________________________ test_out_of_order_execution ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_out_of_order_execution(api_session):
+        """
+        Attempts to fetch captions for a video that was created but NEVER triggered for processing.
+        """
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Out of Order Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # We skip the trigger step and immediately ask for captions
+            caption_resp = api_session.get(f"{BASE_URL}/api/captions?videoId={video_id}")
+    
+            # A good API should return 404 (Not Found) or 400 (Bad Request).
+            if caption_resp.status_code == 200:
+>               pytest.fail("BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.")
+E               Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+tests\test_pipeline.py:316: Failed
+____________________________________________________________ test_content_type_handling _____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000021C034A0790>
+
+    def test_content_type_handling(api_session):
+        """
+        Tests how the API handles requests with incorrect Content-Types or malformed body data.
+        """
+        # Sending plain text instead of JSON
+        headers = {"Content-Type": "text/plain"}
+        payload = "This is definitely not valid JSON data."
+    
+        # We must use api_session.request to override the default JSON formatting
+        resp = api_session.post(f"{BASE_URL}/api/videos", data=payload, headers=headers)
+    
+        if resp.status_code == 500:
+            pytest.fail("BONUS BUG CAUGHT: API crashes (500) when receiving non-JSON content types.")
+        elif resp.status_code in [200, 201]:
+>           pytest.fail("BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.")
+E           Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+tests\test_pipeline.py:352: Failed
+========================================================== SIGNSETU VULNERABILITY SUMMARY ===========================================================
+TARGET   : test_end_to_end_caption_lifecycle
+BREACH   : AssertionError: Workflow failed or timed out. Result: timeout
+assert 'timeout' == 'completed'
+  
+  - completed
+  + timeout
+
+TARGET   : test_ghost_data_after_deletion
+BREACH   : BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+TARGET   : test_idor_authorization_leak
+BREACH   : CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+TARGET   : test_pagination_data_handling
+BREACH   : BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+TARGET   : test_schema_validation_failure
+BREACH   : BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+TARGET   : test_out_of_order_execution
+BREACH   : BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+TARGET   : test_content_type_handling
+BREACH   : BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+============================================================== short test summary info ==============================================================
+FAILED tests/test_pipeline.py::test_end_to_end_caption_lifecycle - AssertionError: Workflow failed or timed out. Result: timeout.
+FAILED tests/test_pipeline.py::test_idor_authorization_leak - Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+FAILED tests/test_pipeline.py::test_pagination_data_handling - Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+FAILED tests/test_pipeline.py::test_schema_validation_failure - Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+FAILED tests/test_pipeline.py::test_out_of_order_execution - Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+FAILED tests/test_pipeline.py::test_content_type_handling - Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+====================================================== 7 failed, 9 passed in 65.78s (0:01:05) =======================================================
+(venv) PS C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa> pytest -v -s tests/test_pipeline.py
+================================================================ test session starts ================================================================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa
+collected 16 items                                                                                                                                   
+
+tests/test_pipeline.py::test_end_to_end_caption_lifecycle FAILED
+tests/test_pipeline.py::test_ghost_data_after_deletion FAILED
+tests/test_pipeline.py::test_idor_authorization_leak FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling PASSED
+tests/test_pipeline.py::test_pagination_data_handling FAILED
+tests/test_pipeline.py::test_malicious_payload_injection PASSED
+tests/test_pipeline.py::test_unsupported_method_crashing PASSED
+tests/test_pipeline.py::test_missing_mandatory_header_crash PASSED
+tests/test_pipeline.py::test_global_data_leak_on_index PASSED
+tests/test_pipeline.py::test_zombie_job_trigger PASSED
+tests/test_pipeline.py::test_schema_validation_failure FAILED
+tests/test_pipeline.py::test_out_of_order_execution FAILED
+tests/test_pipeline.py::test_mass_deletion_vulnerability PASSED
+tests/test_pipeline.py::test_content_type_handling FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling_500 PASSED
+tests/test_pipeline.py::test_mandatory_header_enforcement_on_data_endpoints PASSED
+
+===================================================================== FAILURES ======================================================================
+_________________________________________________________ test_end_to_end_caption_lifecycle _________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_end_to_end_caption_lifecycle(api_session):
+        # 1. Create
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "E2E Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Trigger
+            api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+            # 3. Poll (Using helper with timeout)
+            result = poll_until_complete(api_session, video_id)
+>           assert result == "completed", f"Workflow failed or timed out. Result: {result}"
+E           AssertionError: Workflow failed or timed out. Result: timeout
+E           assert 'timeout' == 'completed'
+E             
+E             - completed
+E             + timeout
+
+tests\test_pipeline.py:49: AssertionError
+__________________________________________________________ test_ghost_data_after_deletion ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_ghost_data_after_deletion(api_session):
+        """
+        Verifies if deleting a video properly cleans up associated data,
+        accounting for eventual consistency in distributed databases.
+        """
+        # Setup
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Cleanup Test"})
+        video_id = create_resp.json().get("id")
+    
+        api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+        # Use the hardened poller
+        result = poll_until_complete(api_session, video_id)
+        if result == "timeout":
+>           pytest.fail("BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.")
+E           Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+tests\test_pipeline.py:72: Failed
+___________________________________________________________ test_idor_authorization_leak ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_idor_authorization_leak(api_session):
+        """
+        Tests if a user can access another user's data by manipulating the X-Candidate-ID.
+        """
+        import requests
+    
+        # 1. Create a video with your main session (Candidate A)
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "IDOR Test Video"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Create a brand new session (Candidate B)
+            rogue_session = requests.Session()
+            rogue_session.headers.update({"X-Candidate-ID": "COMPLETELY_DIFFERENT_ID_999"})
+    
+            # Authenticate Rogue Session
+            auth_resp = rogue_session.post(f"{BASE_URL}/api/auth")
+            rogue_token = auth_resp.json().get("token")
+            rogue_session.headers.update({"Authorization": f"Bearer {rogue_token}"})
+    
+            # 3. Attempt to fetch Candidate A's video using Candidate B's session
+            rogue_get_resp = rogue_session.get(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_get_resp.status_code == 200:
+                pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can access records belonging to another candidate's ID.")
+    
+            # 4. Attempt to DELETE Candidate A's video using Candidate B's session
+            rogue_delete_resp = rogue_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_delete_resp.status_code in [200, 204]:
+>               pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.")
+E               Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+tests\test_pipeline.py:121: Failed
+___________________________________________________________ test_pagination_data_handling ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_pagination_data_handling(api_session):
+        """
+        Tests how the API handles extreme, negative, or malformed data bounds.
+        """
+        # Test 1: Massive Limit (Testing for memory bloat / DDoS vector)
+        resp_massive = api_session.get(f"{BASE_URL}/api/videos?limit=999999999")
+        if resp_massive.status_code == 500:
+            pytest.fail("BUG FOUND: API throws unhandled 500 error on massive limit (Performance/Memory leak).")
+    
+        # Test 2: Negative Limit (Testing for bad database query handling)
+        resp_negative = api_session.get(f"{BASE_URL}/api/videos?limit=-1")
+        if resp_negative.status_code == 200:
+>           pytest.fail("BUG FOUND: API accepts negative limits, potentially breaking pagination logic.")
+E           Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+tests\test_pipeline.py:167: Failed
+__________________________________________________________ test_schema_validation_failure ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_schema_validation_failure(api_session):
+        """
+        Tests if the API accepts completely empty schemas or crashes when required fields are missing.
+        """
+        # Send an empty JSON object
+        resp = api_session.post(f"{BASE_URL}/api/videos", json={})
+    
+        if resp.status_code in [200, 201]:
+            # Clean up if it actually created it
+            video_id = resp.json().get("id")
+            if video_id:
+                api_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+>           pytest.fail("BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.")
+E           Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+tests\test_pipeline.py:297: Failed
+____________________________________________________________ test_out_of_order_execution ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_out_of_order_execution(api_session):
+        """
+        Attempts to fetch captions for a video that was created but NEVER triggered for processing.
+        """
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Out of Order Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # We skip the trigger step and immediately ask for captions
+            caption_resp = api_session.get(f"{BASE_URL}/api/captions?videoId={video_id}")
+    
+            # A good API should return 404 (Not Found) or 400 (Bad Request).
+            if caption_resp.status_code == 200:
+>               pytest.fail("BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.")
+E               Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+tests\test_pipeline.py:316: Failed
+____________________________________________________________ test_content_type_handling _____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x0000027B96C7EED0>
+
+    def test_content_type_handling(api_session):
+        """
+        Tests how the API handles requests with incorrect Content-Types or malformed body data.
+        """
+        # Sending plain text instead of JSON
+        headers = {"Content-Type": "text/plain"}
+        payload = "This is definitely not valid JSON data."
+    
+        # We must use api_session.request to override the default JSON formatting
+        resp = api_session.post(f"{BASE_URL}/api/videos", data=payload, headers=headers)
+    
+        if resp.status_code == 500:
+            pytest.fail("BONUS BUG CAUGHT: API crashes (500) when receiving non-JSON content types.")
+        elif resp.status_code in [200, 201]:
+>           pytest.fail("BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.")
+E           Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+tests\test_pipeline.py:352: Failed
+========================================================== SIGNSETU VULNERABILITY SUMMARY ===========================================================
+TARGET   : test_end_to_end_caption_lifecycle
+BREACH   : AssertionError: Workflow failed or timed out. Result: timeout
+assert 'timeout' == 'completed'
+  
+  - completed
+  + timeout
+
+TARGET   : test_ghost_data_after_deletion
+BREACH   : BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+TARGET   : test_idor_authorization_leak
+BREACH   : CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+TARGET   : test_pagination_data_handling
+BREACH   : BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+TARGET   : test_schema_validation_failure
+BREACH   : BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+TARGET   : test_out_of_order_execution
+BREACH   : BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+TARGET   : test_content_type_handling
+BREACH   : BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+============================================================== short test summary info ==============================================================
+FAILED tests/test_pipeline.py::test_end_to_end_caption_lifecycle - AssertionError: Workflow failed or timed out. Result: timeout.
+FAILED tests/test_pipeline.py::test_idor_authorization_leak - Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+FAILED tests/test_pipeline.py::test_pagination_data_handling - Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+FAILED tests/test_pipeline.py::test_schema_validation_failure - Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+FAILED tests/test_pipeline.py::test_out_of_order_execution - Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+FAILED tests/test_pipeline.py::test_content_type_handling - Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+====================================================== 7 failed, 9 passed in 65.41s (0:01:05) =======================================================
+(venv) PS C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa> pytest -v -s tests/test_pipeline.py
+================================================================ test session starts ================================================================
+platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa
+collected 16 items                                                                                                                                   
+
+tests/test_pipeline.py::test_end_to_end_caption_lifecycle FAILED
+tests/test_pipeline.py::test_ghost_data_after_deletion FAILED
+tests/test_pipeline.py::test_idor_authorization_leak FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling PASSED
+tests/test_pipeline.py::test_pagination_data_handling FAILED
+tests/test_pipeline.py::test_malicious_payload_injection PASSED
+tests/test_pipeline.py::test_unsupported_method_crashing PASSED
+tests/test_pipeline.py::test_missing_mandatory_header_crash PASSED
+tests/test_pipeline.py::test_global_data_leak_on_index PASSED
+tests/test_pipeline.py::test_zombie_job_trigger PASSED
+tests/test_pipeline.py::test_schema_validation_failure FAILED
+tests/test_pipeline.py::test_out_of_order_execution FAILED
+tests/test_pipeline.py::test_mass_deletion_vulnerability PASSED
+tests/test_pipeline.py::test_content_type_handling FAILED
+tests/test_pipeline.py::test_concurrent_stress_handling_500 PASSED
+tests/test_pipeline.py::test_mandatory_header_enforcement_on_data_endpoints PASSED
+
+===================================================================== FAILURES ======================================================================
+_________________________________________________________ test_end_to_end_caption_lifecycle _________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_end_to_end_caption_lifecycle(api_session):
+        # 1. Create
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "E2E Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Trigger
+            api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+            # 3. Poll (Using helper with timeout)
+            result = poll_until_complete(api_session, video_id)
+>           assert result == "completed", f"API BUG: Video processing never completed. Last status: {result}"
+E           AssertionError: API BUG: Video processing never completed. Last status: timeout
+E           assert 'timeout' == 'completed'
+E             
+E             - completed
+E             + timeout
+
+tests\test_pipeline.py:49: AssertionError
+__________________________________________________________ test_ghost_data_after_deletion ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_ghost_data_after_deletion(api_session):
+        """
+        Verifies if deleting a video properly cleans up associated data,
+        accounting for eventual consistency in distributed databases.
+        """
+        # Setup
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Cleanup Test"})
+        video_id = create_resp.json().get("id")
+    
+        api_session.post(f"{BASE_URL}/api/videos/{video_id}/process-captions")
+    
+        # Use the hardened poller
+        result = poll_until_complete(api_session, video_id)
+        if result == "timeout":
+>           pytest.fail("BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.")
+E           Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+tests\test_pipeline.py:72: Failed
+___________________________________________________________ test_idor_authorization_leak ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_idor_authorization_leak(api_session):
+        """
+        Tests if a user can access another user's data by manipulating the X-Candidate-ID.
+        """
+        import requests
+    
+        # 1. Create a video with your main session (Candidate A)
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "IDOR Test Video"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # 2. Create a brand new session (Candidate B)
+            rogue_session = requests.Session()
+            rogue_session.headers.update({"X-Candidate-ID": "COMPLETELY_DIFFERENT_ID_999"})
+    
+            # Authenticate Rogue Session
+            auth_resp = rogue_session.post(f"{BASE_URL}/api/auth")
+            rogue_token = auth_resp.json().get("token")
+            rogue_session.headers.update({"Authorization": f"Bearer {rogue_token}"})
+    
+            # 3. Attempt to fetch Candidate A's video using Candidate B's session
+            rogue_get_resp = rogue_session.get(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_get_resp.status_code == 200:
+                pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can access records belonging to another candidate's ID.")
+    
+            # 4. Attempt to DELETE Candidate A's video using Candidate B's session
+            rogue_delete_resp = rogue_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+    
+            if rogue_delete_resp.status_code in [200, 204]:
+>               pytest.fail("CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.")
+E               Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+tests\test_pipeline.py:121: Failed
+___________________________________________________________ test_pagination_data_handling ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_pagination_data_handling(api_session):
+        """
+        Tests how the API handles extreme, negative, or malformed data bounds.
+        """
+        # Test 1: Massive Limit (Testing for memory bloat / DDoS vector)
+        resp_massive = api_session.get(f"{BASE_URL}/api/videos?limit=999999999")
+        if resp_massive.status_code == 500:
+            pytest.fail("BUG FOUND: API throws unhandled 500 error on massive limit (Performance/Memory leak).")
+    
+        # Test 2: Negative Limit (Testing for bad database query handling)
+        resp_negative = api_session.get(f"{BASE_URL}/api/videos?limit=-1")
+        if resp_negative.status_code == 200:
+>           pytest.fail("BUG FOUND: API accepts negative limits, potentially breaking pagination logic.")
+E           Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+tests\test_pipeline.py:167: Failed
+__________________________________________________________ test_schema_validation_failure ___________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_schema_validation_failure(api_session):
+        """
+        Tests if the API accepts completely empty schemas or crashes when required fields are missing.
+        """
+        # Send an empty JSON object
+        resp = api_session.post(f"{BASE_URL}/api/videos", json={})
+    
+        if resp.status_code in [200, 201]:
+            # Clean up if it actually created it
+            video_id = resp.json().get("id")
+            if video_id:
+                api_session.delete(f"{BASE_URL}/api/videos/{video_id}")
+>           pytest.fail("BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.")
+E           Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+tests\test_pipeline.py:297: Failed
+____________________________________________________________ test_out_of_order_execution ____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_out_of_order_execution(api_session):
+        """
+        Attempts to fetch captions for a video that was created but NEVER triggered for processing.
+        """
+        create_resp = api_session.post(f"{BASE_URL}/api/videos", json={"title": "Out of Order Test"})
+        video_id = create_resp.json().get("id")
+    
+        try:
+            # We skip the trigger step and immediately ask for captions
+            caption_resp = api_session.get(f"{BASE_URL}/api/captions?videoId={video_id}")
+    
+            # A good API should return 404 (Not Found) or 400 (Bad Request).
+            if caption_resp.status_code == 200:
+>               pytest.fail("BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.")
+E               Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+tests\test_pipeline.py:316: Failed
+____________________________________________________________ test_content_type_handling _____________________________________________________________
+
+api_session = <requests.sessions.Session object at 0x000001C415597AD0>
+
+    def test_content_type_handling(api_session):
+        """
+        Tests how the API handles requests with incorrect Content-Types or malformed body data.
+        """
+        # Sending plain text instead of JSON
+        headers = {"Content-Type": "text/plain"}
+        payload = "This is definitely not valid JSON data."
+    
+        # We must use api_session.request to override the default JSON formatting
+        resp = api_session.post(f"{BASE_URL}/api/videos", data=payload, headers=headers)
+    
+        if resp.status_code == 500:
+            pytest.fail("BONUS BUG CAUGHT: API crashes (500) when receiving non-JSON content types.")
+        elif resp.status_code in [200, 201]:
+>           pytest.fail("BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.")
+E           Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+tests\test_pipeline.py:352: Failed
+========================================================== SIGNSETU VULNERABILITY SUMMARY ===========================================================
+TARGET   : test_end_to_end_caption_lifecycle
+BREACH   : AssertionError: API BUG: Video processing never completed. Last status: timeout
+assert 'timeout' == 'completed'
+  
+  - completed
+  + timeout
+
+TARGET   : test_ghost_data_after_deletion
+BREACH   : BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+
+TARGET   : test_idor_authorization_leak
+BREACH   : CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+
+TARGET   : test_pagination_data_handling
+BREACH   : BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+
+TARGET   : test_schema_validation_failure
+BREACH   : BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+
+TARGET   : test_out_of_order_execution
+BREACH   : BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+
+TARGET   : test_content_type_handling
+BREACH   : BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+
+============================================================== short test summary info ==============================================================
+FAILED tests/test_pipeline.py::test_end_to_end_caption_lifecycle - AssertionError: API BUG: Video processing never completed. Last status: timeout
+FAILED tests/test_pipeline.py::test_ghost_data_after_deletion - Failed: BUG FOUND: API status 'pending' never transitions to 'completed'. Job is stuck.
+FAILED tests/test_pipeline.py::test_idor_authorization_leak - Failed: CRITICAL BUG FOUND: IDOR/BOLA. A user can DELETE records belonging to another candidate's ID.
+FAILED tests/test_pipeline.py::test_pagination_data_handling - Failed: BUG FOUND: API accepts negative limits, potentially breaking pagination logic.
+FAILED tests/test_pipeline.py::test_schema_validation_failure - Failed: BONUS BUG CAUGHT: API has zero schema validation. It accepts completely empty payloads and creates blank records.
+FAILED tests/test_pipeline.py::test_out_of_order_execution - Failed: BONUS BUG CAUGHT: API returns 200 OK for captions on a video that was never processed.
+FAILED tests/test_pipeline.py::test_content_type_handling - Failed: BONUS BUG CAUGHT: API accepts raw text/garbage payloads and processes them with a 200 OK.
+====================================================== 7 failed, 9 passed in 60.20s (0:01:00) =======================================================
+(venv) PS C:\Users\Dheeraj Sutram\Documents\projects\signsetu-qa> 

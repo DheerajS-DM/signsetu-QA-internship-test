@@ -122,13 +122,27 @@
 - `test_malicious_payload_injection`: injects NoSQL/SQL operators into title/url.
 
 ---
+### How to run 
 
-## Potential Improvements
 
-Although the test suite successfully uncovered 7 bugs, the following enhancements would make it more robust and production-ready.
 
-### 1. Polling with Exponential Backoff
-**Current:** Fixed 2-second intervals, 20 retries -> 40 seconds timeout.  
-**Improvement:**  
-```python
-interval = min(initial_backoff * (2 ** attempt), max_backoff)
+# Clone / unzip the repository
+cd signsetu-qa
+
+# Create a virtual environment (Python 3.11)
+py -3.11 -m venv venv
+.\venv\scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all tests with verbose output
+pytest -v -s tests/test_pipeline.py
+
+# Run only security tests (example)
+pytest -v -s tests/test_pipeline.py -k "idor or leak or injection"
+
+
+
+### Conclusion
+The test suite successfully broke the API in 7 distinct ways, including a critical IDOR vulnerability, stuck async jobs, and complete lack of input validation. The architecture is modular, uses session-based authentication with automatic token refresh, and includes both happy-path and adversarial testing. The identified improvements would elevate the suite to a production-grade level, but even in its current state, it demonstrates strong QA engineering skills.

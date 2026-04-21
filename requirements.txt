@@ -9,7 +9,6 @@ pip==24.0
 pluggy==1.6.0
 Pygments==2.20.0
 pytest==9.0.3
-python-dotenv==1.2.2
 requests==2.33.1
 setuptools==65.5.0
 urllib3==2.6.3

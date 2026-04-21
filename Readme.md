@@ -145,4 +145,4 @@ pytest -v -s tests/test_pipeline.py -k "idor or leak or injection"
 
 
 ### Conclusion
-The test suite successfully broke the API in 7 distinct ways, including a critical IDOR vulnerability, stuck async jobs, and complete lack of input validation. The architecture is modular, uses session-based authentication with automatic token refresh, and includes both happy-path and adversarial testing. The identified improvements would elevate the suite to a production-grade level, but even in its current state, it demonstrates strong QA engineering skills.
+The test suite successfully broke the API in 7 distinct ways, including a critical IDOR vulnerability, stuck async jobs, and complete lack of input validation. The architecture is modular, uses session-based authentication with automatic token refresh, and includes both happy-path and adversarial testing.

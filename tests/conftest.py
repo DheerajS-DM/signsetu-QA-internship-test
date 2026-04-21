@@ -1,8 +1,18 @@
+import os
+
 import pytest
 import requests
+from dotenv import load_dotenv
 
-BASE_URL = "https://qa-testing-navy.vercel.app"
-CANDIDATE_ID = "Dheeraj-Sutram-QA-Intern-Test" # Mandatory header
+# Load environment variables from the .env file
+load_dotenv()
+
+BASE_URL = os.getenv("BASE_URL")
+CANDIDATE_ID = os.getenv("CANDIDATE_ID")
+
+# Fail fast if the environment isn't configured correctly
+if not CANDIDATE_ID or not BASE_URL:
+    raise ValueError("Missing required environment variables. Please check your .env file.")
 
 @pytest.fixture(scope="session")
 def api_session():
